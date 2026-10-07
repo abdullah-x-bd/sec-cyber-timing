@@ -169,7 +169,6 @@ def main() -> None:
         "accession_no",
         "accepted_at_et",
         "items_raw",
-        "knowledge_estimated",
     ]
     sample = sample.merge(
         filings[filing_cols].drop_duplicates("accession_no"),
