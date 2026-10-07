@@ -1,0 +1,47 @@
+name: public-event-study
+
+on:
+  push:
+    paths:
+      - ".github/workflows/public-event-study.yml"
+      - "scripts/run_public_event_study.py"
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install project and data client
+        run: |
+          pip install -e ".[dev]"
+          pip install "huggingface_hub>=0.27" "pyarrow>=17"
+      - name: Download public SEC metadata
+        run: |
+          python - <<'PY'
+          from huggingface_hub import snapshot_download
+          snapshot_download(
+              repo_id="ZipLime/sec-8k-events",
+              repo_type="dataset",
+              local_dir="/tmp/sec-8k-events",
+              allow_patterns=[
+                  "data/filings/*.parquet",
+                  "data/cyber_events/*.parquet",
+                  "data/entity_map/*.parquet",
+              ],
+          )
+          PY
+      - name: Run event study
+        run: python scripts/run_public_event_study.py
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-event-study
+          retention-days: 30
+          if-no-files-found: warn
+          path: results/public_event_study/
