@@ -1,0 +1,42 @@
+name: materiality-audit
+
+on:
+  push:
+    paths:
+      - ".github/workflows/materiality-audit.yml"
+      - "scripts/audit_materiality_dates_public.py"
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install
+        run: |
+          pip install -e ".[dev]"
+          pip install "huggingface_hub>=0.27" "pyarrow>=17"
+      - name: Download public cyber event text
+        run: |
+          python - <<'PY'
+          from huggingface_hub import snapshot_download
+          snapshot_download(
+              repo_id="ZipLime/sec-8k-events",
+              repo_type="dataset",
+              local_dir="/tmp/sec-8k-events",
+              allow_patterns=["data/cyber_events/*.parquet"],
+          )
+          PY
+      - name: Build materiality audit
+        run: python scripts/audit_materiality_dates_public.py
+      - name: Upload audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: materiality-audit
+          retention-days: 30
+          if-no-files-found: error
+          path: results/materiality_audit/
