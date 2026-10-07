@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 import statsmodels.formula.api as smf
 
-
 ROOT = Path(__file__).resolve().parents[1]
 HF_ROOT = Path("/tmp/sec-8k-events")
 OUT = ROOT / "results" / "public_control"
@@ -120,7 +119,7 @@ def main() -> None:
     combined["after_1700"] = (accepted_et.dt.hour >= 17).astype(int)
 
     # Identify 2.02 controls if a usable items field is present.
-    items_col = next((c for c in ["items", "item_codes", "item"] if c in combined.columns), None)
+    items_col = next((c for c in ["items_raw", "items", "item_codes", "item"] if c in combined.columns), None)
     if items_col:
         combined["has_202"] = combined[items_col].astype(str).str.contains(
             r"(^|[,;\s])2\.02($|[,;\s])", regex=True
@@ -128,71 +127,160 @@ def main() -> None:
     else:
         combined["has_202"] = False
 
+    # Distance from each filing to the nearest cyber filing by the same issuer.
+    cyber_dates = {
+        cik: group[filing_date_f].dropna().tolist()
+        for cik, group in cyber_filing_rows.groupby(cik_f)
+    }
+
+    def nearest_cyber_days(row: pd.Series) -> float:
+        dates = cyber_dates.get(row[cik_f], [])
+        if not dates or pd.isna(row[filing_date_f]):
+            return np.nan
+        return min(abs((row[filing_date_f] - value).days) for value in dates)
+
+    combined["nearest_cyber_days"] = combined.apply(nearest_cyber_days, axis=1)
+
+    # Clock-time bins describe submission timing independently of SEC dissemination.
+    minute_of_day = (
+        accepted_et.dt.hour * 60
+        + accepted_et.dt.minute
+        + accepted_et.dt.second / 60
+    )
+    combined["time_bin"] = pd.cut(
+        minute_of_day,
+        bins=[-np.inf, 9.5 * 60, 16 * 60, 16.5 * 60, np.inf],
+        labels=[
+            "pre_market_clock",
+            "regular_clock",
+            "first_30_postclose",
+            "late_postclose",
+        ],
+        right=False,
+    )
+
     combined.to_csv(OUT / "matched_firm_8k_sample.csv", index=False)
 
+    sample_masks = {
+        "all_controls": pd.Series(True, index=combined.index),
+        "controls_ex_202": combined["is_cyber"].eq(1) | ~combined["has_202"],
+        "controls_ex_202_exact": (
+            (combined["is_cyber"].eq(1) | ~combined["has_202"])
+            & ~combined["knowledge_estimated"].astype(bool)
+        ),
+        "within_365d_ex_202": (
+            combined["is_cyber"].eq(1)
+            | (
+                ~combined["has_202"]
+                & combined["nearest_cyber_days"].le(365)
+            )
+        ),
+        "within_180d_ex_202": (
+            combined["is_cyber"].eq(1)
+            | (
+                ~combined["has_202"]
+                & combined["nearest_cyber_days"].le(180)
+            )
+        ),
+        "within_90d_ex_202": (
+            combined["is_cyber"].eq(1)
+            | (
+                ~combined["has_202"]
+                & combined["nearest_cyber_days"].le(90)
+            )
+        ),
+    }
+
     summary_rows = []
-    for label, subset in [
-        ("cyber", combined.loc[combined.is_cyber.eq(1)]),
-        ("controls", combined.loc[combined.is_cyber.eq(0)]),
-        ("controls_ex_202", combined.loc[combined.is_cyber.eq(0) & ~combined.has_202]),
-    ]:
-        summary_rows.append(
-            {
-                "group": label,
-                "n": len(subset),
-                "unique_firms": subset["cik_key"].nunique(),
-                "after_market_rate": subset["after_hours"].mean(),
-                "after_1600_rate": subset["after_1600"].mean(),
-                "after_1630_rate": subset["after_1630"].mean(),
-                "after_1700_rate": subset["after_1700"].mean(),
-                "friday_rate": subset["friday"].mean(),
-            }
-        )
+    for sample_name, mask in sample_masks.items():
+        sample = combined.loc[mask].copy()
+        for label, subset in [
+            ("cyber", sample.loc[sample["is_cyber"].eq(1)]),
+            ("controls", sample.loc[sample["is_cyber"].eq(0)]),
+        ]:
+            summary_rows.append(
+                {
+                    "sample": sample_name,
+                    "group": label,
+                    "n": len(subset),
+                    "unique_firms": subset["cik_key"].nunique(),
+                    "after_market_rate": subset["after_hours"].mean(),
+                    "after_1600_rate": subset["after_1600"].mean(),
+                    "after_1630_rate": subset["after_1630"].mean(),
+                    "after_1700_rate": subset["after_1700"].mean(),
+                    "friday_rate": subset["friday"].mean(),
+                    "exact_timestamp_rate": (
+                        ~subset["knowledge_estimated"].astype(bool)
+                    ).mean(),
+                }
+            )
     summary = pd.DataFrame(summary_rows)
     summary.to_csv(OUT / "group_summary.csv", index=False)
 
+    time_bins = (
+        combined.groupby(["is_cyber", "time_bin"], observed=True)
+        .size()
+        .rename("n")
+        .reset_index()
+    )
+    time_bins["share_within_group"] = time_bins.groupby("is_cyber")["n"].transform(
+        lambda values: values / values.sum()
+    )
+    time_bins.to_csv(OUT / "clock_time_bins.csv", index=False)
+
+    year_summary = (
+        combined.assign(year=combined[filing_date_f].dt.year)
+        .groupby(["is_cyber", "year"], as_index=False)
+        .agg(
+            n=("after_1600", "size"),
+            after_1600_rate=("after_1600", "mean"),
+            after_1630_rate=("after_1630", "mean"),
+            friday_rate=("friday", "mean"),
+        )
+    )
+    year_summary.to_csv(OUT / "year_summary.csv", index=False)
+
     model_rows = []
-    for outcome in ["after_hours", "after_1600", "friday"]:
-        data = combined.dropna(subset=[outcome, "is_cyber", "cik_key", "year_month"]).copy()
-        fit = smf.ols(
-            f"{outcome} ~ is_cyber + C(cik_key) + C(year_month)",
-            data=data,
-        ).fit(cov_type="cluster", cov_kwds={"groups": data["cik_key"]})
-        model_rows.append(
-            {
-                "sample": "all_controls",
-                "outcome": outcome,
-                "coef": fit.params.get("is_cyber", np.nan),
-                "se": fit.bse.get("is_cyber", np.nan),
-                "p": fit.pvalues.get("is_cyber", np.nan),
-                "n": int(fit.nobs),
-                "firms": int(data["cik_key"].nunique()),
-            }
-        )
+    for sample_name, mask in sample_masks.items():
+        sample = combined.loc[mask].copy()
+        for outcome in [
+            "after_hours",
+            "after_1600",
+            "after_1630",
+            "after_1700",
+            "friday",
+        ]:
+            data = sample.dropna(
+                subset=[outcome, "is_cyber", "cik_key", "year_month"]
+            ).copy()
+            fit = smf.ols(
+                f"{outcome} ~ is_cyber + C(cik_key) + C(year_month)",
+                data=data,
+            ).fit(cov_type="cluster", cov_kwds={"groups": data["cik_key"]})
+            model_rows.append(
+                {
+                    "sample": sample_name,
+                    "outcome": outcome,
+                    "coef": fit.params.get("is_cyber", np.nan),
+                    "se": fit.bse.get("is_cyber", np.nan),
+                    "p": fit.pvalues.get("is_cyber", np.nan),
+                    "n": int(fit.nobs),
+                    "firms": int(data["cik_key"].nunique()),
+                }
+            )
 
-        no_earn = data.loc[(data.is_cyber.eq(1)) | (~data.has_202)].copy()
-        fit2 = smf.ols(
-            f"{outcome} ~ is_cyber + C(cik_key) + C(year_month)",
-            data=no_earn,
-        ).fit(cov_type="cluster", cov_kwds={"groups": no_earn["cik_key"]})
-        model_rows.append(
-            {
-                "sample": "controls_ex_202",
-                "outcome": outcome,
-                "coef": fit2.params.get("is_cyber", np.nan),
-                "se": fit2.bse.get("is_cyber", np.nan),
-                "p": fit2.pvalues.get("is_cyber", np.nan),
-                "n": int(fit2.nobs),
-                "firms": int(no_earn["cik_key"].nunique()),
-            }
-        )
-
-    pd.DataFrame(model_rows).to_csv(OUT / "fixed_effect_models.csv", index=False)
+    models = pd.DataFrame(model_rows)
+    models.to_csv(OUT / "fixed_effect_models.csv", index=False)
 
     # Firm-level paired descriptive comparison.
     firm = (
         combined.groupby(["cik_key", "is_cyber"])
-        .agg(n=("after_hours", "size"), after_hours=("after_hours", "mean"), friday=("friday", "mean"))
+        .agg(
+            n=("after_1600", "size"),
+            after_1600=("after_1600", "mean"),
+            after_1630=("after_1630", "mean"),
+            friday=("friday", "mean"),
+        )
         .reset_index()
         .pivot(index="cik_key", columns="is_cyber")
     )
