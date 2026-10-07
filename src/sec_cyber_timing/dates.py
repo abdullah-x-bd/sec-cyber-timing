@@ -15,11 +15,15 @@ MONTH = (
 DATE = rf"{MONTH}\s+\d{{1,2}},\s+20\d{{2}}"
 
 PATTERNS = [
-    rf"On\s+(?P<date>{DATE}),?\s+(?:the\s+)?(?:Company|company|registrant|we)\s+"
-    rf"(?:determined|concluded)\s+(?:that\s+)?(?:the\s+)?(?:cybersecurity\s+)?"
-    rf"incident\s+(?:was|is|to be)\s+material",
-    rf"(?:determined|concluded)\s+(?:that\s+)?(?:the\s+)?(?:cybersecurity\s+)?"
-    rf"incident\s+(?:was|is|to be)\s+material\s+on\s+(?P<date>{DATE})",
+    (
+        rf"On\s+(?P<date>{DATE}),?\s+(?:the\s+)?(?:Company|company|registrant|we)\s+"
+        rf"(?:determined|concluded)\s+(?:that\s+)?(?:the\s+)?(?:cybersecurity\s+)?"
+        rf"incident\s+(?:was|is|to be)\s+material"
+    ),
+    (
+        rf"(?:determined|concluded)\s+(?:that\s+)?(?:the\s+)?(?:cybersecurity\s+)?"
+        rf"incident\s+(?:was|is|to be)\s+material\s+on\s+(?P<date>{DATE})"
+    ),
     rf"materiality\s+determination\s+(?:was\s+)?made\s+on\s+(?P<date>{DATE})",
 ]
 
