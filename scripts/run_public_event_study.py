@@ -4,10 +4,10 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy.stats import ttest_1samp, wilcoxon
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 import yfinance as yf
+from scipy.stats import ttest_1samp, wilcoxon
 
 
 ROOT = Path(__file__).resolve().parents[1]
