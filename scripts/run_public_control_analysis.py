@@ -54,8 +54,8 @@ def main() -> None:
 
     accession_c = first_existing(cyber, ["accession_no", "accessionNumber", "accession"])
     cik_c = first_existing(cyber, ["cik", "entity_cik"])
-    filing_date_c = first_existing(cyber, ["filing_date", "filingDate"])
-    form_c = first_existing(cyber, ["form", "form_type", "formType"])
+    knowledge_date_c = first_existing(cyber, ["knowledge_date"])
+    amendment_c = first_existing(cyber, ["is_amendment"])
 
     filings[accession_f] = filings[accession_f].astype(str)
     filings[cik_f] = filings[cik_f].astype(str).str.zfill(10)
@@ -64,14 +64,21 @@ def main() -> None:
 
     cyber[accession_c] = cyber[accession_c].astype(str)
     cyber[cik_c] = cyber[cik_c].astype(str).str.zfill(10)
-    cyber[filing_date_c] = pd.to_datetime(cyber[filing_date_c], errors="coerce")
+    cyber[knowledge_date_c] = pd.to_datetime(
+        cyber[knowledge_date_c], errors="coerce", utc=True
+    )
+    cyber["knowledge_date_et"] = (
+        cyber[knowledge_date_c]
+        .dt.tz_convert("America/New_York")
+        .dt.tz_localize(None)
+    )
 
     start = pd.Timestamp("2024-06-15")
     end = pd.Timestamp("2026-09-30")
 
     cyber_primary = cyber.loc[
-        cyber[form_c].map(as_bool_original)
-        & cyber[filing_date_c].between(start, end)
+        ~cyber[amendment_c].astype(bool)
+        & cyber["knowledge_date_et"].between(start, end + pd.Timedelta(days=1))
     ].copy()
     cyber_primary = cyber_primary.drop_duplicates(accession_c)
 
