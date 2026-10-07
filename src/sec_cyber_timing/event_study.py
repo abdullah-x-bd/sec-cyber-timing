@@ -55,7 +55,7 @@ def market_model_event(
         "valid": True,
         "alpha": float(model.params["const"]),
         "beta": float(model.params["benchmark"]),
-        "estimation_n": int(len(estimation)),
+        "estimation_n": len(estimation),
     }
 
     for start, end in event_windows:
