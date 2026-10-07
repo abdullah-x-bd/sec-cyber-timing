@@ -38,8 +38,8 @@ def main() -> None:
     cyber = load_parts("cyber_events")
 
     schema = {
-        "filings_rows": int(len(filings)),
-        "cyber_rows": int(len(cyber)),
+        "filings_rows": len(filings),
+        "cyber_rows": len(cyber),
         "filings_columns": list(filings.columns),
         "cyber_columns": list(cyber.columns),
     }
@@ -192,10 +192,10 @@ def main() -> None:
     firm.to_csv(OUT / "firm_level_rates.csv")
 
     discovery = {
-        "cyber_primary_rows": int(len(cyber_primary)),
+        "cyber_primary_rows": len(cyber_primary),
         "cyber_primary_firms": int(cyber_primary[cik_c].nunique()),
-        "cyber_rows_matched_to_filings": int(len(cyber_filing_rows)),
-        "control_rows": int(len(controls)),
+        "cyber_rows_matched_to_filings": len(cyber_filing_rows),
+        "control_rows": len(controls),
         "control_firms": int(controls[cik_f].nunique()),
     }
     (OUT / "discovery.json").write_text(json.dumps(discovery, indent=2))
