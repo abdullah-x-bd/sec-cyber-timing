@@ -263,7 +263,7 @@ def main() -> None:
         if len(data) < 15:
             continue
 
-        fit = smf.ols(f"{window} ~ after_1630", data=data).fit(cov_type="HC1")
+        fit = smf.ols(f'Q("{window}") ~ after_1630', data=data).fit(cov_type="HC1")
         timing_rows.append(
             {
                 "window": window,
@@ -275,7 +275,7 @@ def main() -> None:
             }
         )
 
-        fit2 = smf.ols(f"{window} ~ after_1600", data=data).fit(cov_type="HC1")
+        fit2 = smf.ols(f'Q("{window}") ~ after_1600', data=data).fit(cov_type="HC1")
         timing_rows.append(
             {
                 "window": window,
