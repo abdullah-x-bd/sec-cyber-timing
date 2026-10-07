@@ -1,0 +1,35 @@
+study:
+  title: "Bad News on the Clock: Strategic Timing of Mandatory Cybersecurity Disclosures"
+  collection_start: "2023-12-18"
+  uniform_compliance_start: "2024-06-15"
+  end_date: "2026-09-30"
+  timezone: "America/New_York"
+
+sec:
+  submissions_bulk_url: "https://www.sec.gov/Archives/edgar/daily-index/bulkdata/submissions.zip"
+  archives_root: "https://www.sec.gov/Archives/edgar/data"
+  max_requests_per_second: 4.0
+  forms:
+    - "8-K"
+    - "8-K/A"
+  cyber_item: "1.05"
+
+timing:
+  market_close: "16:00"
+  after_hours_inclusive: true
+  deadline_business_days: 4
+
+sample:
+  include_amendments_in_primary: false
+  minimum_control_filings_per_firm: 1
+  primary_deadline_sample_starts_at_uniform_compliance: true
+
+event_study:
+  estimation_window_start: -130
+  estimation_window_end: -30
+  event_windows:
+    - [-1, 1]
+    - [0, 1]
+    - [0, 2]
+    - [0, 5]
+  benchmark_ticker: "SPY"
