@@ -1,0 +1,47 @@
+name: entity-map-probe
+
+on:
+  push:
+    paths:
+      - ".github/workflows/entity-map-probe.yml"
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install pandas pyarrow huggingface_hub
+      - name: Download and inspect entity map
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import pandas as pd
+          from huggingface_hub import snapshot_download
+
+          root = Path("/tmp/sec8k")
+          snapshot_download(
+              repo_id="ZipLime/sec-8k-events",
+              repo_type="dataset",
+              local_dir=root,
+              allow_patterns=[
+                  "data/entity_map/*.parquet",
+                  "data/cyber_events/*.parquet",
+              ],
+          )
+          entity = pd.concat(
+              [pd.read_parquet(p) for p in sorted((root / "data/entity_map").glob("*.parquet"))],
+              ignore_index=True,
+          )
+          cyber = pd.concat(
+              [pd.read_parquet(p) for p in sorted((root / "data/cyber_events").glob("*.parquet"))],
+              ignore_index=True,
+          )
+          print("ENTITY COLUMNS:", entity.columns.tolist())
+          print(entity.head(10).to_string(index=False))
+          print("CYBER COLUMNS:", cyber.columns.tolist())
+          PY
