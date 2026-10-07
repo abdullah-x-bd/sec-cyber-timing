@@ -1,3 +1,5 @@
+import pandas as pd
+
 from sec_cyber_timing.config import ROOT, load_config
 from sec_cyber_timing.filings import build_filing_universe
 from sec_cyber_timing.sec import iter_submission_records
@@ -11,7 +13,18 @@ def main() -> None:
     if not source.exists():
         raise FileNotFoundError("Run scripts/collect_sec.py first.")
 
-    records = list(iter_submission_records(source))
+    start = pd.Timestamp(study["collection_start"])
+    end = pd.Timestamp(study["end_date"])
+
+    records = []
+    for row in iter_submission_records(source):
+        if row.get("form") not in {"8-K", "8-K/A"}:
+            continue
+        filing_date = pd.to_datetime(row.get("filingDate"), errors="coerce")
+        if pd.isna(filing_date) or not (start <= filing_date <= end):
+            continue
+        records.append(row)
+
     universe = build_filing_universe(
         records,
         start=study["collection_start"],
