@@ -6,7 +6,7 @@ import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
+from collections.abc import Iterator
 
 import requests
 
@@ -32,7 +32,7 @@ class SecClient:
         self._last_request = 0.0
 
     @classmethod
-    def from_env(cls, max_requests_per_second: float = 4.0) -> "SecClient":
+    def from_env(cls, max_requests_per_second: float = 4.0) -> SecClient:
         return cls(
             user_agent=os.environ.get("SEC_USER_AGENT", ""),
             max_requests_per_second=max_requests_per_second,
@@ -56,11 +56,10 @@ class SecClient:
         if destination.exists() and not overwrite:
             return destination
         temp = destination.with_suffix(destination.suffix + ".part")
-        with self.get(url, stream=True) as response:
-            with temp.open("wb") as handle:
-                for chunk in response.iter_content(chunk_size=1024 * 1024):
-                    if chunk:
-                        handle.write(chunk)
+        with self.get(url, stream=True) as response, temp.open("wb") as handle:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    handle.write(chunk)
         temp.replace(destination)
         return destination
 
